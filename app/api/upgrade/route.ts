@@ -1,41 +1,40 @@
-import { getServerSession } from 'next-auth'
-import { CloudBaseService } from '@/lib/cloudbase'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { NextResponse } from 'next/server'
+import { CloudBaseAuthService } from '@/lib/auth/services/cloudbase-auth'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function POST() {
-  // 1. 获取当前用户 session
-  const session = await getServerSession(authOptions)
-
-  // 检查是否登录
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export async function POST(request: NextRequest) {
   try {
-    // 2. 先找到用户的 ID (CloudBase 更新通常需要 _id)
-    const userId = (session.user as any).id
+    // 1. 实例化认证服务
+    const authService = new CloudBaseAuthService()
 
-    if (!userId) {
-      //以此为保险，如果session里没id，用email查一下
-      const user = await CloudBaseService.findUser({ email: session.user.email })
-      if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // 2. 获取当前用户 - 从请求头获取token
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
 
-      // 3. 执行更新：将 subscriptionTier 设为 'pro'
-      await CloudBaseService.updateUser(user._id, {
-        subscriptionTier: 'pro',
-      })
-    } else {
-      // 直接用 Session 里的 ID 更新
-      await CloudBaseService.updateUser(userId, {
-        subscriptionTier: 'pro'
-      })
+    if (!token) {
+      return NextResponse.json({ error: 'Authorization token required' }, { status: 401 })
     }
 
-    return NextResponse.json({ success: true, subscriptionTier: 'pro' }, { status: 200 })
+    // 3. 验证token并获取用户信息
+    const currentUser = await authService.validateTokenAndGetUser(token)
+
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
+    }
+
+    // 4. 更新用户订阅等级为 pro
+    await authService.updateUserSubscription(currentUser.id, 'pro')
+
+    return NextResponse.json({
+      success: true,
+      subscriptionTier: 'pro',
+      userId: currentUser.id
+    }, { status: 200 })
 
   } catch (error) {
-    console.error('Update failed:', error)
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+    console.error('Upgrade failed:', error)
+    return NextResponse.json({
+      error: 'Upgrade failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }

@@ -268,6 +268,64 @@ export class CloudBaseAuthService {
     }
   }
 
+  /**
+   * 验证token并获取用户信息
+   */
+  async validateTokenAndGetUser(token: string): Promise<User | null> {
+    try {
+      if (!this.db) {
+        return null;
+      }
+
+      // 通过sessionToken查找用户
+      const result = await this.db.collection('users')
+        .where({ sessionToken: token })
+        .get();
+
+      const user = result.data[0];
+      if (!user) {
+        return null;
+      }
+
+      return {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+        createdAt: new Date(user.createdAt),
+        metadata: {
+          pro: user.pro || false,
+          region: user.region || 'CN'
+        }
+      };
+    } catch (error) {
+      console.error('CloudBase validate token error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 更新用户订阅等级
+   */
+  async updateUserSubscription(userId: string, subscriptionTier: 'free' | 'premium' | 'pro'): Promise<void> {
+    try {
+      if (!this.db) {
+        throw new Error('Database not initialized');
+      }
+
+      await this.db.collection('users')
+        .doc(userId)
+        .update({
+          subscriptionTier,
+          pro: subscriptionTier !== 'free',
+          updatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('CloudBase update user subscription error:', error);
+      throw error;
+    }
+  }
+
   private generateSessionToken(): string {
     return Buffer.from(`${Date.now()}-${Math.random().toString(36).substr(2, 9)}`).toString('base64');
   }

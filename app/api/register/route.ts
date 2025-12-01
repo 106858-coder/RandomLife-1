@@ -1,6 +1,5 @@
-import { CloudBaseService } from '@/lib/cloudbase'
+import { CloudBaseAuthService } from '@/lib/auth/services/cloudbase-auth'
 import { z } from 'zod'
-import bcrypt from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 
 // 详细的注册数据验证
@@ -29,48 +28,63 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password } = validationResult.data
 
-    // 2. 检查邮箱是否已存在
-    const emailExists = await CloudBaseService.isEmailExists(email.trim().toLowerCase())
-    if (emailExists) {
+    // 2. 实例化认证服务
+    const authService = new CloudBaseAuthService()
+
+    // 3. 检查邮箱是否已存在 - 通过 CloudBaseAuthService 的内部方法
+    // 我们直接调用 signUpWithEmail，它会自动处理重复检查
+    const authResponse = await authService.signUpWithEmail(
+      email.trim().toLowerCase(),
+      password,
+      name?.trim()
+    )
+
+    if (authResponse.error) {
+      // 处理各种错误情况
+      let errorMessage = authResponse.error.message
+
+      // 根据错误消息判断具体错误类型
+      if (errorMessage.includes('already exists') || errorMessage.includes('User already exists')) {
+        return NextResponse.json(
+          { error: '该邮箱已被注册，请使用其他邮箱或直接登录' },
+          { status: 409 }
+        )
+      }
+
+      if (errorMessage.includes('LIMIT_EXCEEDED')) {
+        return NextResponse.json({ error: '注册请求过于频繁' }, { status: 429 })
+      }
+
       return NextResponse.json(
-        { error: '该邮箱已被注册，请使用其他邮箱或直接登录' },
-        { status: 409 }
+        { error: errorMessage },
+        { status: 400 }
       )
     }
 
-    // 3. 密码加密
-    const hashedPassword = await bcrypt.hash(password, 12)
-
-    // 4. 准备用户数据对象 (先存到一个变量里)
-    const newUserData = {
-      name: name?.trim() || undefined,
-      email: email.trim().toLowerCase(),
-      password: hashedPassword,
-      subscriptionTier: 'free', // 确保默认是 free
-      createdAt: new Date(),
-      updatedAt: new Date()
+    if (!authResponse.user) {
+      return NextResponse.json(
+        { error: '注册失败，请稍后重试' },
+        { status: 500 }
+      )
     }
 
-    // 5. 创建用户
-    // 注意：result 只包含 { id: "...", requestId: "..." }
-    const result = await CloudBaseService.createUser(newUserData)
-
-    // 6. 返回成功响应
-    // 关键修正：直接使用上面的 newUserData 变量，而不是从 result 里读
+    // 4. 返回成功响应
     return NextResponse.json({
       success: true,
       message: '注册成功！',
       user: {
-        id: result.id, // SDK 返回的新 ID (数据库里的 _id)
-        email: newUserData.email,
-        name: newUserData.name,
-        subscriptionTier: newUserData.subscriptionTier
+        id: authResponse.user.id,
+        email: authResponse.user.email,
+        name: authResponse.user.name,
+        subscriptionTier: 'free', // 默认免费版
+        session: authResponse.session // 返回会话信息供客户端使用
       }
     }, { status: 201 })
 
   } catch (error: any) {
     console.error('注册API错误:', error)
 
+    // 处理特定的错误情况
     if (error.code === 'LIMIT_EXCEEDED') {
       return NextResponse.json({ error: '注册请求过于频繁' }, { status: 429 })
     }
