@@ -7,6 +7,9 @@ import { getDEPLOY_REGION } from '@/lib/config/region';
 import { CloudBaseAuthService } from '@/lib/auth/services/cloudbase-auth';
 import { SupabaseAuthService } from '@/lib/auth/services/supabase-auth';
 
+// 强制动态渲染
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // 从 cookie 中获取 token

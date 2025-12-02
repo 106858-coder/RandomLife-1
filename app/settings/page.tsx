@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -12,11 +11,22 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, CreditCard, User, Crown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { auth } from "@/lib/auth/client"
+
+interface User {
+  id: string
+  email?: string
+  name?: string
+  subscriptionTier?: string
+  isPro?: boolean
+  paymentMethod?: string
+}
 
 export default function SettingsPage() {
-  const { data: session } = useSession()
   const router = useRouter()
   const { toast } = useToast()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const [cardNumber, setCardNumber] = useState("")
   const [cardName, setCardName] = useState("")
@@ -24,7 +34,36 @@ export default function SettingsPage() {
   const [cvv, setCvv] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  if (!session) {
+  useEffect(() => {
+    // 获取当前用户信息
+    const getCurrentUser = async () => {
+      try {
+        const { data } = await auth.getUser()
+        if (data.user) {
+          setUser(data.user as User)
+        } else {
+          router.push("/login")
+        }
+      } catch (error) {
+        console.error('Failed to get current user:', error)
+        router.push("/login")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getCurrentUser()
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!user) {
     router.push("/login")
     return null
   }
@@ -111,38 +150,38 @@ export default function SettingsPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Name</Label>
-                  <Input value={(session.user as any)?.name || "N/A"} disabled />
+                  <Input value={user?.name || "N/A"} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input value={session.user?.email || ""} disabled />
+                  <Input value={user?.email || ""} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Subscription Tier</Label>
                   <div className="flex items-center gap-2">
-                    {(session as any)?.user?.subscriptionTier === "enterprise" && (
+                    {user?.subscriptionTier === "enterprise" && (
                       <span className="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-700 font-medium">
                         Max Enterprise
                       </span>
                     )}
-                    {(session as any)?.user?.subscriptionTier === "pro" && (
+                    {user?.subscriptionTier === "pro" && (
                       <span className="px-3 py-1 text-sm rounded-full bg-green-100 text-green-700 font-medium">
                         Pro
                       </span>
                     )}
-                    {(session as any)?.user?.subscriptionTier === "free" && (
+                    {user?.subscriptionTier === "free" && (
                       <span className="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-700 font-medium">
                         Free
                       </span>
                     )}
                   </div>
                 </div>
-                {(session as any)?.user?.paymentMethod && (
+                {user?.paymentMethod && (
                   <div className="space-y-2">
                     <Label>Payment Method</Label>
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1 text-sm rounded-full bg-blue-50 text-blue-700 font-medium capitalize">
-                        {(session as any)?.user?.paymentMethod}
+                        {user.paymentMethod}
                       </span>
                     </div>
                   </div>
@@ -238,7 +277,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {(session as any)?.user?.isPro ? (
+                {user?.subscriptionTier === "pro" || user?.isPro ? (
                   <div className="text-center py-8">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                       <Crown className="h-8 w-8 text-green-600" />
