@@ -158,8 +158,8 @@ export function createArchitectureConfig(
       type: baseConfig.database.provider,
       // 从环境变量获取具体配置
       ...(baseConfig.database.provider === "supabase" && {
-        url: process.env.SUPABASE_URL,
-        anonKey: process.env.SUPABASE_ANON_KEY,
+        url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+        anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
       }),
       ...(baseConfig.database.provider === "cloudbase" && {
         envId: process.env.WECHAT_CLOUDBASE_ID,
@@ -185,11 +185,14 @@ export function validateEnvironmentVariables(): { valid: boolean; errors: string
 
   // 验证数据库配置
   if (config.database.provider === "supabase") {
-    if (!process.env.SUPABASE_URL) {
-      errors.push("SUPABASE_URL is required for Supabase database");
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl) {
+      errors.push("NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL is required for Supabase database");
     }
-    if (!process.env.SUPABASE_ANON_KEY) {
-      errors.push("SUPABASE_ANON_KEY is required for Supabase database");
+    if (!supabaseAnonKey) {
+      errors.push("NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY is required for Supabase database");
     }
   } else if (config.database.provider === "cloudbase") {
     if (!process.env.WECHAT_CLOUDBASE_ID) {

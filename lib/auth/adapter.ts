@@ -25,15 +25,23 @@ class SupabaseAuthAdapter implements AuthAdapter {
   private supabase: any;
 
   constructor() {
-    // 动态导入 Supabase 客户端
-    if (typeof window !== 'undefined') {
-      import('@supabase/supabase-js').then(({ createClient }) => {
-        // 这里需要从配置中获取 URL 和 Key
-        this.supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-        );
-      });
+    // 立即初始化 Supabase 客户端
+    try {
+      const { createClient } = require('@supabase/supabase-js');
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        console.warn('⚠️ Supabase 环境变量未配置');
+        this.supabase = null;
+        return;
+      }
+
+      this.supabase = createClient(supabaseUrl, supabaseAnonKey);
+      console.log('✅ Supabase adapter initialized');
+    } catch (error) {
+      console.error('Failed to initialize Supabase adapter:', error);
+      this.supabase = null;
     }
   }
 

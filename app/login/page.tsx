@@ -1,12 +1,11 @@
 "use client"
-import { signIn } from 'next-auth/react'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { auth } from '@/lib/auth/client'
-import { getDEPLOY_REGION } from '@/lib/config/region'
+import { isChinaDeployment } from '@/lib/config/deployment'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,7 +14,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isChinaRegion = getDEPLOY_REGION() === 'CN'
+  const isChinaRegion = isChinaDeployment()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,23 +24,42 @@ export default function LoginPage() {
     setError(null)
 
     try {
+      console.log('🔐 开始登录:', { email, region: isChinaRegion ? 'CN' : 'INTL' })
+
       // 使用新的认证 API
       const response = await auth.signInWithPassword({ email, password })
 
+      console.log('🔐 登录响应:', response)
+
       if (response.data.user) {
+        console.log('✅ 登录成功，用户:', response.data.user)
+
+        // 保存 token 到 cookie（如果存在）
+        if (response.data.session?.access_token) {
+          document.cookie = `auth-token=${response.data.session.access_token}; path=/; max-age=604800`
+        }
+
         router.push('/')
         router.refresh()
       } else {
-        setError(response.error?.message || '登录失败')
+        console.log('❌ 登录失败:', response.error)
+
+        // 处理特定的错误类型
+        const errorMessage = response.error?.message || '登录失败'
+
+        if (errorMessage.includes('Email not confirmed')) {
+          setError('邮箱尚未确认，请检查您的邮箱并点击确认链接。如果没有收到邮件，请点击下方的"重新发送确认邮件"按钮。')
+        } else if (errorMessage.includes('Invalid login credentials')) {
+          setError('邮箱或密码错误，请重新输入。')
+        } else if (errorMessage.includes('Too many requests')) {
+          setError('登录尝试次数过多，请稍后再试。')
+        } else {
+          setError(errorMessage)
+        }
       }
     } catch (err) {
-      // 降级到 NextAuth
-      const res = await signIn('credentials', { email, password, redirect: false })
-      if (res?.ok) {
-        router.push('/')
-      } else {
-        setError('邮箱或密码错误')
-      }
+      console.error('🔐 登录异常:', err)
+      setError('登录服务暂时不可用，请稍后再试')
     } finally {
       setLoading(false)
     }
@@ -82,6 +100,42 @@ export default function LoginPage() {
       await auth.signInWithOAuth({ provider: 'github' })
     } catch (err) {
       setError('GitHub 登录服务暂时不可用')
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      setError('请先输入邮箱地址')
+      return
+    }
+
+    setLoading(true)
+    try {
+      // 调用 Supabase API 重新发送确认邮件
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/resend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`
+        },
+        body: JSON.stringify({
+          email: email,
+          type: 'signup'
+        })
+      })
+
+      if (response.ok) {
+        setError('确认邮件已重新发送，请检查您的邮箱。')
+      } else {
+        const data = await response.json()
+        setError(`发送确认邮件失败: ${data.message || '未知错误'}`)
+      }
+    } catch (err) {
+      console.error('重发确认邮件错误:', err)
+      setError('发送确认邮件时发生错误，请稍后再试。')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -138,7 +192,21 @@ export default function LoginPage() {
 
           {error && (
             <div className="text-red-600 text-sm text-center bg-red-50 p-3 rounded-md">
-              {error}
+              <div>{error}</div>
+              {error.includes('邮箱尚未确认') && (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResendConfirmation}
+                    disabled={loading}
+                    className="text-xs"
+                  >
+                    {loading ? '发送中...' : '重新发送确认邮件'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

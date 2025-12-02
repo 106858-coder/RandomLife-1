@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -11,21 +10,49 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Check, Crown, Zap, Building2, CreditCard, ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { auth } from "@/lib/auth/client"
 
 type PaymentMethod = "stripe" | "paypal"
 type Tier = "free" | "pro" | "enterprise"
 
+interface User {
+  id: string
+  email?: string
+  name?: string
+  subscriptionTier?: string
+  isPro?: boolean
+}
+
 export default function PricingPage() {
-  const { data: session } = useSession()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { toast } = useToast()
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("stripe")
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const currentTier = (session as any)?.user?.subscriptionTier || "free"
+  const currentTier = user?.subscriptionTier || "free"
+
+  useEffect(() => {
+    // 获取当前用户信息
+    const getCurrentUser = async () => {
+      try {
+        const { data } = await auth.getUser()
+        if (data.user) {
+          setUser(data.user as User)
+        }
+      } catch (error) {
+        console.error('Failed to get current user:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getCurrentUser()
+  }, [])
 
   const handleSubscribe = async (tier: Tier) => {
-    if (!session) {
+    if (!user) {
       router.push("/login")
       return
     }
@@ -134,6 +161,14 @@ export default function PricingPage() {
       ],
     },
   ]
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F9FC] p-4 py-12">

@@ -1,11 +1,20 @@
-"use client"
+"use client";
 
 import { motion } from "framer-motion"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Card } from "@/components/ui/card"
-import { useSession, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Settings } from "lucide-react"
+import { auth } from "@/lib/auth/client"
+
+interface User {
+  id: string
+  email?: string
+  name?: string
+  subscriptionTier?: string
+  isPro?: boolean
+}
 
 const categories = [
   {
@@ -46,7 +55,45 @@ const categories = [
 ]
 
 export default function HomePage() {
-  const { data: session } = useSession()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // 获取当前用户信息
+    const getCurrentUser = async () => {
+      try {
+        const { data } = await auth.getUser()
+        if (data.user) {
+          setUser(data.user as User)
+        }
+      } catch (error) {
+        console.error('Failed to get current user:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getCurrentUser()
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut()
+      setUser(null)
+      window.location.href = '/'
+    } catch (error) {
+      console.error('Logout failed:', error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#F7F9FC] p-4">
       <div className="max-w-md mx-auto">
@@ -57,13 +104,13 @@ export default function HomePage() {
             <p className="text-gray-600 text-sm">Daily Discovery</p>
           </div>
           <div className="flex items-center gap-2">
-            {(session as any)?.user?.subscriptionTier === "pro" && (
+            {user?.subscriptionTier === "pro" && (
               <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-700">PRO</span>
             )}
-            {(session as any)?.user?.subscriptionTier === "enterprise" && (
+            {user?.subscriptionTier === "enterprise" && (
               <span className="px-2 py-1 text-xs rounded bg-purple-100 text-purple-700 font-medium">ENTERPRISE</span>
             )}
-            {session ? (
+            {user ? (
               <>
                 <Link href="/settings">
                   <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -71,7 +118,7 @@ export default function HomePage() {
                   </Button>
                 </Link>
                 <Link href="/pro" className="text-sm text-blue-600">Pro</Link>
-                <Button variant="secondary" size="sm" onClick={() => signOut({ callbackUrl: '/' })}>Logout</Button>
+                <Button variant="secondary" size="sm" onClick={handleLogout}>Logout</Button>
               </>
             ) : (
               <>

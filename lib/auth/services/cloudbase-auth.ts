@@ -9,12 +9,20 @@ import bcrypt from 'bcryptjs';
 
 export class CloudBaseAuthService {
   private db: any = null;
+  private initializationPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initializeDatabase();
+    this.initializationPromise = this.initializeDatabase();
   }
 
   private async initializeDatabase() {
+    // 检查必需的环境变量
+    if (!process.env.WECHAT_CLOUDBASE_ID || !process.env.CLOUDBASE_SECRET_ID || !process.env.CLOUDBASE_SECRET_KEY) {
+      console.warn('⚠️ CloudBase 环境变量未配置，请检查 .env.local 文件');
+      console.warn('需要的变量: WECHAT_CLOUDBASE_ID, CLOUDBASE_SECRET_ID, CLOUDBASE_SECRET_KEY');
+      throw new Error('CloudBase environment variables not configured');
+    }
+
     try {
       const connector = new CloudBaseConnector({});
       await connector.initialize({
@@ -23,16 +31,25 @@ export class CloudBaseAuthService {
         secretKey: process.env.CLOUDBASE_SECRET_KEY,
       });
       this.db = connector.getClient();
+      console.log('✅ CloudBase auth service database initialized');
     } catch (error) {
       console.error('Failed to initialize CloudBase database:', error);
+      throw error;
+    }
+  }
+
+  private async waitForInitialization() {
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+    }
+    if (!this.db) {
+      throw new Error('CloudBase database initialization failed');
     }
   }
 
   async signInWithEmail(email: string, password: string): Promise<AuthResponse> {
     try {
-      if (!this.db) {
-        throw new Error('Database not initialized');
-      }
+      await this.waitForInitialization();
 
       // 查找用户
       const result = await this.db.collection('users')
@@ -90,9 +107,7 @@ export class CloudBaseAuthService {
 
   async signUpWithEmail(email: string, password: string, name?: string): Promise<AuthResponse> {
     try {
-      if (!this.db) {
-        throw new Error('Database not initialized');
-      }
+      await this.waitForInitialization();
 
       // 检查用户是否已存在
       const existingUser = await this.db.collection('users')
@@ -158,9 +173,7 @@ export class CloudBaseAuthService {
 
   async signInWithWechat(code: string): Promise<AuthResponse> {
     try {
-      if (!this.db) {
-        throw new Error('Database not initialized');
-      }
+      await this.waitForInitialization();
 
       // 调用微信 API 获取用户信息
       const wechatUser = await this.getWechatUserInfo(code);
@@ -242,12 +255,10 @@ export class CloudBaseAuthService {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      if (!this.db) {
-        return null;
-      }
+      await this.waitForInitialization();
 
-      // 在实际实现中，这里应该从请求中获取 token 并验证
-      // 为了简化，这里返回 null，实际使用时需要传入 token 或从上下文获取
+      // 这个方法现在主要通过 API 端点调用
+      // 在服务器端环境中，这里暂时返回 null
       return null;
     } catch (error) {
       console.error('CloudBase get current user error:', error);
@@ -257,9 +268,7 @@ export class CloudBaseAuthService {
 
   async signOut(): Promise<void> {
     try {
-      if (!this.db) {
-        return;
-      }
+      await this.waitForInitialization();
 
       // 在实际实现中，这里应该清除用户的 sessionToken
       // 需要传入用户 ID 或 token
@@ -273,9 +282,7 @@ export class CloudBaseAuthService {
    */
   async validateTokenAndGetUser(token: string): Promise<User | null> {
     try {
-      if (!this.db) {
-        return null;
-      }
+      await this.waitForInitialization();
 
       // 通过sessionToken查找用户
       const result = await this.db.collection('users')
@@ -309,9 +316,7 @@ export class CloudBaseAuthService {
    */
   async updateUserSubscription(userId: string, subscriptionTier: 'free' | 'premium' | 'pro'): Promise<void> {
     try {
-      if (!this.db) {
-        throw new Error('Database not initialized');
-      }
+      await this.waitForInitialization();
 
       await this.db.collection('users')
         .doc(userId)
